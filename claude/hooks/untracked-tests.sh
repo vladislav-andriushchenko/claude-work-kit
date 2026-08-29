@@ -8,10 +8,11 @@ set -u
 # Тестовые корни разных экосистем. Каталог, а не имя файла: имена расходятся
 # сильнее, чем размещение, и ложное срабатывание по имени дороже пропуска.
 #
-# Голый `test/` намеренно НЕ включён: так называют и каталоги с данными
-# (`test/artifacts/`), и блокировать их значит нарушить собственное правило
-# «в сомнении пропускать».
-TEST_DIRS='(^|/)(src/test|src/it|tests|spec|__tests__)/'
+# НЕ включены намеренно, оба по одной причине — так называют не только тесты:
+#   test/  — каталоги с данными (test/artifacts/);
+#   spec/  — спецификации API (spec/openapi.yaml), а не только RSpec.
+# Блокировать их значит нарушить собственное правило «в сомнении пропускать».
+TEST_DIRS='(^|/)(src/test|src/it|tests|__tests__)/'
 
 scan() {
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
@@ -19,8 +20,12 @@ scan() {
   # `status --porcelain` здесь не годится: он цитирует пути с пробелами и
   # эскейпит не-ASCII восьмеричными кодами, а разбор такой строки полем awk
   # молча терял ровно те файлы, ради которых хук написан.
+  #
+  # Запись, кончающаяся на `/`, — это вложенный репозиторий, схлопнутый в одну
+  # строку. `git clean -fd` внутрь него не заходит, терять там нечего.
   git ls-files --others --exclude-standard -z 2>/dev/null \
     | tr '\0' '\n' \
+    | grep -v '/$' \
     | grep -E "$TEST_DIRS" || true
 }
 
@@ -29,9 +34,10 @@ selftest() {
   t=$(mktemp -d) || exit 1
   cd "$t" || exit 1
   git init -q . && git config user.email t@t && git config user.name t
-  mkdir -p src/test/kotlin tests docs test-utils test/artifacts "src/test/cats with space" "tests/каталог"
+  mkdir -p src/test/kotlin src/it tests __tests__ spec docs test-utils test/artifacts \
+           "src/test/cats with space" "tests/каталог"
 
-  check() { # имя; ожидание пусто|непусто; [ожидаемая подстрока в выводе]
+  check() { # имя; ожидание пусто|непусто; [обязательная подстрока вывода]
     local got; got=$(scan)
     if [ "$2" = "пусто" ] && [ -n "$got" ]; then echo "ПРОВАЛ: $1 (получено: $got)"; fail=1; fi
     if [ "$2" = "непусто" ] && [ -z "$got" ]; then echo "ПРОВАЛ: $1"; fail=1; fi
@@ -39,38 +45,50 @@ selftest() {
       echo "ПРОВАЛ: $1 — в выводе нет '$3', получено: $got"; fail=1
     fi
   }
+  one() { # каталог; ожидание; имя случая
+    echo x > "$1/probe.txt"
+    check "$3" "$2" $([ "$2" = непусто ] && echo "$1/probe.txt")
+    rm "$1/probe.txt"
+  }
 
   check "чистый репозиторий" пусто
 
-  echo x > docs/note.md
-  check "неотслеживаемый файл вне тестов не ловится" пусто
+  # По одному случаю на каждую альтернативу шаблона: иначе урезание TEST_DIRS
+  # проходит мимо селф-теста, и он остаётся зелёным при сломанном хуке.
+  one src/test/kotlin непусто "src/test ловится"
+  one src/it         непусто "src/it ловится"
+  one tests          непусто "tests ловится"
+  one __tests__      непусто "__tests__ ловится"
 
-  echo x > src/test/kotlin/FooTest.kt
-  check "src/test ловится" непусто "src/test/kotlin/FooTest.kt"
-  rm src/test/kotlin/FooTest.kt
-
-  echo x > tests/test_foo.py
-  check "tests/ ловится" непусто "tests/test_foo.py"
-  rm tests/test_foo.py
+  one docs       пусто "файл вне тестов не ловится"
+  one spec       пусто "spec — это ещё и спецификации API, не ловится"
+  one test/artifacts пусто "каталог test/ с данными не ловится"
+  one test-utils пусто "test-utils не тестовый каталог"
 
   echo x > "src/test/cats with space/a.txt"
-  check "путь с пробелом ловится и печатается целиком" непусто "src/test/cats with space/a.txt"
+  check "путь с пробелом ловится целиком" непусто "src/test/cats with space/a.txt"
   rm "src/test/cats with space/a.txt"
 
   echo x > "tests/каталог/test.py"
-  check "не-ASCII путь ловится и печатается целиком" непусто "tests/каталог/test.py"
+  check "не-ASCII путь ловится целиком" непусто "tests/каталог/test.py"
   rm "tests/каталог/test.py"
-
-  echo x > test/artifacts/data.txt
-  check "каталог test/ с данными не блокируется" пусто
-  rm test/artifacts/data.txt
-
-  echo x > test-utils/helper.kt
-  check "test-utils не тестовый каталог, не ловится" пусто
 
   echo "node_modules/" > .gitignore
   mkdir -p tests/node_modules && echo x > tests/node_modules/junk.js
   check "игнорируемое git не ловится" пусто
+  rm -rf tests/node_modules .gitignore
+
+  # Вложенный репозиторий: git clean -fd его пропускает, терять нечего.
+  mkdir -p tests/nested && (cd tests/nested && git init -q . && git config user.email t@t && git config user.name t)
+  echo x > tests/nested/test_foo.py
+  check "вложенный репозиторий не блокирует" пусто
+  rm -rf tests/nested
+
+  # Вне git-репозитория хук обязан молчать.
+  local outside; outside=$(mktemp -d)
+  mkdir -p "$outside/tests" && echo x > "$outside/tests/test_foo.py"
+  ( cd "$outside" && [ -n "$(scan)" ] ) && { echo "ПРОВАЛ: вне git-репозитория должен молчать"; fail=1; }
+  rm -rf "$outside"
 
   cd / && rm -rf "$t"
   [ "$fail" = 0 ] && echo "selftest ok" || exit 1
