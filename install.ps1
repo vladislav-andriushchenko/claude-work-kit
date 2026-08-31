@@ -27,6 +27,7 @@ function Copy-One($relative) {
 
 Write-Host "Правила:"
 Copy-One 'rules\agent-hygiene.md'
+Copy-One 'rules\data-boundary.md'
 if (Test-Path (Join-Path $src 'rules\project.md')) {
   Copy-One 'rules\project.md'
 } else {

@@ -1,6 +1,6 @@
 # claude-work-kit
 
-Набор для Claude Code на рабочей машине: правило гигиены, четыре скилла, два хука.
+Набор для Claude Code на рабочей машине: два правила, четыре скилла, два хука.
 Ставится в `~/.claude`, под конкретный проект разворачивается сам.
 
 Внутри нет ни одного имени, модуля или конвенции конкретного проекта — и это не
@@ -39,6 +39,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 ```
 claude/rules/agent-hygiene.md      четыре правила про то, как агент врёт о результате
+claude/rules/data-boundary.md      пять правил про то, что не уходит с машины наружу
 claude/skills/kit-bootstrap/       собрать rules/project.md под конкретный проект
 claude/skills/schema-from-spec/    JSON Schema из куска Swagger
 claude/skills/negative-checks/     список негативных проверок по схеме

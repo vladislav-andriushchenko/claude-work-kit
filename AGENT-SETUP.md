@@ -29,6 +29,7 @@ git clone --depth 1 https://github.com/vladislav-andriushchenko/claude-work-kit 
 
 ```
 rules/agent-hygiene.md
+rules/data-boundary.md
 skills/kit-bootstrap/SKILL.md
 skills/schema-from-spec/SKILL.md
 skills/negative-checks/SKILL.md
