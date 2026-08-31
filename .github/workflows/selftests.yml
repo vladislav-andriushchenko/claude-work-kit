@@ -1,0 +1,33 @@
+name: selftests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  hooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Оба хука несут свой селф-тест и падают ненулевым кодом. Без этой сборки
+      # они проверяются только когда про них вспомнят — ровно та ошибка, которую
+      # README набора описывает в четвёртом круге.
+      - name: false-green hook selftest
+        run: ./claude/hooks/false-green.sh --selftest
+
+      - name: untracked-tests hook selftest
+        run: ./claude/hooks/untracked-tests.sh --selftest
+
+      # Селф-тесты работают во временных каталогах. Если хук начнёт писать
+      # рядом с собой, это видно здесь, а не через неделю в чужом репозитории.
+      - name: hooks leave the working tree clean
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            echo "::error::selftest left files behind in the working tree"
+            exit 1
+          fi
+          echo "working tree clean"
