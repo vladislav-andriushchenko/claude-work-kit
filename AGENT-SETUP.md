@@ -30,17 +30,24 @@ git clone --depth 1 https://github.com/vladislav-andriushchenko/claude-work-kit 
 ```
 rules/agent-hygiene.md
 rules/data-boundary.md
+rules/incident-log.md
 skills/kit-bootstrap/SKILL.md
 skills/schema-from-spec/SKILL.md
 skills/negative-checks/SKILL.md
 skills/bench-the-fix/SKILL.md
 hooks/untracked-tests.sh
 hooks/false-green.sh
+incidents.md
 ```
 
 Каталогов может не быть — создать.
 
 `rules/project.md` в наборе нет намеренно: он собирается на шаге 6.
+
+`incidents.md` — пустая заготовка журнала, адресат правила `incident-log.md`.
+**Если файл уже есть — не трогать вообще**, даже если он отличается от заготовки:
+там записи человека. Пустая заготовка поверх заполненного журнала — потеря
+данных, а не установка.
 
 ## Шаг 3. Включить хуки в `settings.json`
 
