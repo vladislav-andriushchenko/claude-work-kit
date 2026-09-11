@@ -83,30 +83,32 @@ xml_failed() {
   while IFS= read -r file; do
     [ -z "$file" ] && continue
     tr '\n\r' '  ' < "$file" | awk '
-      BEGIN { RS="<testcase" }
-      NR > 1 {
-        hdr = $0; sub(/>.*/, "", hdr)
-        if (hdr ~ /\/$/) next                      # самозакрывающийся: упасть не мог
-        cur = ""
-        if (match(hdr, /classname="[^"]*"/)) cur = substr(hdr, RSTART+11, RLENGTH-12)
-        if (match(hdr, /[[:space:]]name="[^"]*"/)) cur = cur "." substr(hdr, RSTART+7, RLENGTH-8)
-        body = $0
-        # Вырезать каждый блок отдельно: жадный .* съел бы <failure/> между
-        # двумя <system-out> в одной записи.
-        while (match(body, /<system-out>/)) {
+      # Вывод тестов вырезается до разрезания на записи: строка «<testcase» в
+      # логе теста иначе стала бы границей записи. Каждый блок отдельно, жадный
+      # .* съел бы <failure/> между двумя блоками. Атрибуты у тега допускаются.
+      function strip(body, op, cl,   s, rest) {
+        while (match(body, op)) {
           s = RSTART; rest = substr(body, s)
-          if (!match(rest, /<\/system-out>/)) break
+          if (!match(rest, cl)) break
           body = substr(body, 1, s-1) substr(rest, RSTART+RLENGTH)
         }
-        while (match(body, /<system-err>/)) {
-          s = RSTART; rest = substr(body, s)
-          if (!match(rest, /<\/system-err>/)) break
-          body = substr(body, 1, s-1) substr(rest, RSTART+RLENGTH)
-        }
-        gsub(/<system-out\/>|<system-err\/>/, "", body)
-        if (body ~ /<(failure|error)([[:space:]>]|\/>)/ && cur != "") print cur
+        return body
       }
-    ' "$file"
+      {
+        body = strip($0, "<system-out[^>]*>", "</system-out>")
+        body = strip(body, "<system-err[^>]*>", "</system-err>")
+        n = split(body, rec, /<testcase/)
+        for (i = 2; i <= n; i++) {
+          hdr = rec[i]; sub(/>.*/, "", hdr)
+          if (hdr ~ /\/$/) continue                 # самозакрывающийся: упасть не мог
+          cur = ""
+          if (match(hdr, /classname="[^"]*"/)) cur = substr(hdr, RSTART+11, RLENGTH-12)
+          if (match(hdr, /[[:space:]]name="[^"]*"/)) cur = cur "." substr(hdr, RSTART+7, RLENGTH-8)
+          if (cur == "") cur = "(testcase без имени)"
+          if (rec[i] ~ /<(failure|error)([[:space:]>]|\/>)/) print cur
+        }
+      }
+    '
   done < <(xml_files) | sort -u
 }
 
@@ -334,6 +336,12 @@ FAKE
     '<testsuite name="G" tests="1" failures="1" errors="0"><testcase name="g" classname="G"><system-out>a</system-out><failure/><system-out>b</system-out></testcase></testsuite>'
   xml_case "skipped больше tests не уходит в минус" "0 0 0" "" \
     '<testsuite name="Z" tests="0" skipped="2" failures="0" errors="0"></testsuite>'
+  xml_case "system-out с атрибутами тоже вырезается" "2 1 0" "H.bad" \
+    '<testsuite name="H" tests="2" failures="1" errors="0"><testcase name="green" classname="H"><system-out attr="1"><error/></system-out></testcase><testcase name="bad" classname="H"><failure/></testcase></testsuite>'
+  xml_case "литеральный testcase в выводе теста не режет запись" "1 1 0" "I.x" \
+    '<testsuite name="I" tests="1" failures="1" errors="0"><testcase name="x" classname="I"><system-out>log <testcase foo="bar"/> here</system-out><failure/></testcase></testsuite>'
+  xml_case "testcase без имени всё равно попадает в список" "1 1 0" "(testcase без имени)" \
+    '<testsuite name="J" tests="1" failures="1" errors="0"><testcase time="0.01"><failure/></testcase></testsuite>'
 
   # Прерывание между apply и apply -R: файл, созданный патчем, обязан исчезнуть.
   printf 'new\n' > src/main/New.txt && git add src/main/New.txt && git diff --cached > "$t/new.patch" && git reset -q && rm src/main/New.txt
