@@ -21,6 +21,9 @@ jobs:
       - name: untracked-tests hook selftest
         run: ./claude/hooks/untracked-tests.sh --selftest
 
+      - name: mutation-gate tool selftest
+        run: ./claude/tools/mutation-gate.sh --selftest
+
       # Селф-тесты работают во временных каталогах. Если хук начнёт писать
       # рядом с собой, это видно здесь, а не через неделю в чужом репозитории.
       - name: hooks leave the working tree clean

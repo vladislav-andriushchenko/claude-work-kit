@@ -35,8 +35,10 @@ skills/kit-bootstrap/SKILL.md
 skills/schema-from-spec/SKILL.md
 skills/negative-checks/SKILL.md
 skills/bench-the-fix/SKILL.md
+skills/mutation-gate/SKILL.md
 hooks/untracked-tests.sh
 hooks/false-green.sh
+tools/mutation-gate.sh
 incidents.md
 ```
 
@@ -71,7 +73,11 @@ bash ~/.claude/hooks/untracked-tests.sh --selftest
 bash ~/.claude/hooks/false-green.sh --selftest
 ```
 
-Оба должны напечатать `selftest ok`.
+```bash
+bash ~/.claude/tools/mutation-gate.sh --selftest
+```
+
+Все три должны напечатать `selftest ok`.
 
 `bash` не найден (обычная ситуация на Windows без Git Bash) — сказать об этом
 прямо: правила и скиллы работают, **хуки не работают**. Не делать вид, что

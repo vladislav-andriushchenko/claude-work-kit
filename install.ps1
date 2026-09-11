@@ -9,8 +9,10 @@ $dst = Join-Path $env:USERPROFILE '.claude'
 # Список один на все проходы: по нему же идёт предполётная проверка.
 $rules   = @('rules\agent-hygiene.md', 'rules\data-boundary.md', 'rules\incident-log.md')
 $skills  = @('skills\kit-bootstrap\SKILL.md', 'skills\bench-the-fix\SKILL.md',
-             'skills\schema-from-spec\SKILL.md', 'skills\negative-checks\SKILL.md')
+             'skills\schema-from-spec\SKILL.md', 'skills\negative-checks\SKILL.md',
+             'skills\mutation-gate\SKILL.md')
 $hooks   = @('hooks\untracked-tests.sh', 'hooks\false-green.sh')
+$tools   = @('tools\mutation-gate.sh')
 $journal = @('incidents.md')
 
 $failed = 0
@@ -65,7 +67,7 @@ function Copy-One($relative) {
 
 # Предполёт: неполный набор ловится до того, как что-то поставлено наполовину.
 $missing = @()
-foreach ($r in ($rules + $skills + $hooks + $journal)) {
+foreach ($r in ($rules + $skills + $hooks + $tools + $journal)) {
   if (-not (Test-Path -LiteralPath (Join-Path $src $r))) { $missing += $r }
 }
 if ($missing.Count -gt 0) {
@@ -90,6 +92,9 @@ foreach ($r in $skills) { Copy-One $r }
 
 Write-Host "Хуки:"
 foreach ($r in $hooks) { Copy-One $r }
+
+Write-Host "Инструменты:"
+foreach ($r in $tools) { Copy-One $r }
 
 # Правило incident-log велит писать в этот файл. Без заготовки адресата нет:
 # агенту сказано «оформляй сразу», а класть некуда.
