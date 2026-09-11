@@ -61,7 +61,12 @@ xml_totals() {
     [ -z "$file" ] && continue
     while IFS= read -r tag; do
       [ -z "$tag" ] && continue
-      x=$((x + $(attr "$tag" tests) - $(attr "$tag" skipped)))
+      local n s
+      n=$(attr "$tag" tests); s=$(attr "$tag" skipped)
+      # skipped больше tests это битый отчёт; в минус не уходим, иначе
+      # проверка «выполнено ноль» не сработает.
+      [ "$s" -gt "$n" ] && s=$n
+      x=$((x + n - s))
       f=$((f + $(attr "$tag" failures)))
       e=$((e + $(attr "$tag" errors)))
     done < <(tr '\n\r' '  ' < "$file" | grep -o '<testsuite[[:space:]][^>]*>')
@@ -86,8 +91,18 @@ xml_failed() {
         if (match(hdr, /classname="[^"]*"/)) cur = substr(hdr, RSTART+11, RLENGTH-12)
         if (match(hdr, /[[:space:]]name="[^"]*"/)) cur = cur "." substr(hdr, RSTART+7, RLENGTH-8)
         body = $0
-        gsub(/<system-out>.*<\/system-out>/, "", body)
-        gsub(/<system-err>.*<\/system-err>/, "", body)
+        # Вырезать каждый блок отдельно: жадный .* съел бы <failure/> между
+        # двумя <system-out> в одной записи.
+        while (match(body, /<system-out>/)) {
+          s = RSTART; rest = substr(body, s)
+          if (!match(rest, /<\/system-out>/)) break
+          body = substr(body, 1, s-1) substr(rest, RSTART+RLENGTH)
+        }
+        while (match(body, /<system-err>/)) {
+          s = RSTART; rest = substr(body, s)
+          if (!match(rest, /<\/system-err>/)) break
+          body = substr(body, 1, s-1) substr(rest, RSTART+RLENGTH)
+        }
         gsub(/<system-out\/>|<system-err\/>/, "", body)
         if (body ~ /<(failure|error)([[:space:]>]|\/>)/ && cur != "") print cur
       }
@@ -130,6 +145,9 @@ restore_current() {
     if [ -f "$BACKUP/$f" ]; then
       mkdir -p "$(dirname "$PROJECT/$f")"
       cp "$BACKUP/$f" "$PROJECT/$f"
+    else
+      # Бэкапа нет, значит до патча файла не было: патч его создал, убираем.
+      rm -f "$PROJECT/$f"
     fi
   done
 }
@@ -312,6 +330,16 @@ FAKE
     '<testsuite name="L" tests="2" failures="0" errors="0"><testcase name="log" classname="L"><system-out><error message="not a failure"/></system-out></testcase><testcase name="ok" classname="L"/></testsuite>'
   xml_case "error как отказ теста считается" "1 0 1" "E.e" \
     '<testsuite name="E" tests="1" failures="0" errors="1"><testcase name="e" classname="E"><error type="x">boom</error></testcase></testsuite>'
+  xml_case "failure между двумя system-out не теряется" "1 1 0" "G.g" \
+    '<testsuite name="G" tests="1" failures="1" errors="0"><testcase name="g" classname="G"><system-out>a</system-out><failure/><system-out>b</system-out></testcase></testsuite>'
+  xml_case "skipped больше tests не уходит в минус" "0 0 0" "" \
+    '<testsuite name="Z" tests="0" skipped="2" failures="0" errors="0"></testsuite>'
+
+  # Прерывание между apply и apply -R: файл, созданный патчем, обязан исчезнуть.
+  printf 'new\n' > src/main/New.txt && git add src/main/New.txt && git diff --cached > "$t/new.patch" && git reset -q && rm src/main/New.txt
+  ( PROJECT="$root"; BACKUP=$(mktemp -d); mapfile -t CUR_FILES < <(files_of_patch "$t/new.patch")
+    git -C "$root" apply "$t/new.patch"; restore_current; [ ! -e "$root/src/main/New.txt" ] )
+  check 0 $? "файл, созданный патчем, удалён при восстановлении" "$(git status --short)"
 
   cd / && rm -rf "$t"
   [ "$fail" = 0 ] && echo "selftest ok" || exit 1
